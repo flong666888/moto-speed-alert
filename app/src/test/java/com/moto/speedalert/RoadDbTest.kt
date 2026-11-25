@@ -36,3 +36,22 @@ class RoadDbTest {
         assertEquals(60, limitAt(25.0100, 121.50002, 0.0))
     }
 }
+
+/** Checks against the real bundled Taiwan data. */
+class BundledRoadDataTest {
+    @Test
+    fun loadsQuicklyAndMatchesRealRoads() {
+        val bytes = java.io.File("src/main/assets/roads.bin").readBytes()
+        val t0 = System.nanoTime()
+        val db = RoadDb.parse(bytes)
+        val ms = (System.nanoTime() - t0) / 1_000_000
+        println("roads.bin: ${db.roads.size} roads parsed in $ms ms")
+        assertTrue(db.roads.size > 50_000)
+
+        // 忠孝東路四段 near SOGO / 忠孝復興, riding east.
+        val m = Roads.match(db.near(25.04155, 121.5470), 25.04155, 121.5470, 90.0)
+        println("match: ${m?.road?.name} limit=${m?.limit} d=${m?.distance}")
+        assertEquals("忠孝東路四段", m?.road?.name)
+        assertEquals(50, m?.limit)
+    }
+}
