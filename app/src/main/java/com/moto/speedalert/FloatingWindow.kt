@@ -31,6 +31,7 @@ class FloatingWindow(private val context: Context, private val settings: Setting
     private lateinit var speedText: TextView
     private lateinit var limitText: TextView
     private lateinit var cameraText: TextView
+    private lateinit var cameraHeader: TextView
     private lateinit var background: GradientDrawable
     private lateinit var params: WindowManager.LayoutParams
 
@@ -48,13 +49,25 @@ class FloatingWindow(private val context: Context, private val settings: Setting
     private fun render(s: RideState) {
         speedText.text = if (s.hasFix) Math.round(s.speedKmh).toString() else "--"
         limitText.text = s.limit.toString()
-        background.setColor(if (s.overspeed) COLOR_DANGER else COLOR_BG)
-        speedText.setTextColor(if (s.overspeed || !s.hasFix) COLOR_TEXT else COLOR_OK)
+        background.setColor(if (s.alarming) COLOR_DANGER else COLOR_BG)
+        speedText.setTextColor(
+            when {
+                s.alarming || !s.hasFix -> COLOR_TEXT
+                s.overspeed -> COLOR_WARN
+                else -> COLOR_OK
+            }
+        )
         val cam = s.camera
         if (cam != null) {
+            // Camera zone: thick yellow frame + "測速照相" header + distance.
+            background.setStroke(dp(4f).toInt(), COLOR_CAMERA)
+            cameraHeader.visibility = View.VISIBLE
+            cameraHeader.text = if (cam.camera.section) "📷 區間測速" else "📷 測速照相"
             cameraText.visibility = View.VISIBLE
-            cameraText.text = "📷 ${cam.distance.toInt()}m"
+            cameraText.text = "${cam.distance.toInt()} m"
         } else {
+            background.setStroke(dp(1.5f).toInt(), 0x55FFFFFF)
+            cameraHeader.visibility = View.GONE
             cameraText.visibility = View.GONE
         }
     }
@@ -95,9 +108,26 @@ class FloatingWindow(private val context: Context, private val settings: Setting
             }
         }
         cameraText = TextView(context).apply {
-            textSize = 11f
+            textSize = 15f
+            typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
-            setTextColor(0xFFFFD54F.toInt())
+            setTextColor(COLOR_CAMERA)
+            visibility = View.GONE
+        }
+        cameraHeader = TextView(context).apply {
+            textSize = 12f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(0xFF101418.toInt())
+            background = GradientDrawable().apply {
+                cornerRadius = dp(6f)
+                setColor(COLOR_CAMERA)
+            }
+            val ph = dp(6f).toInt()
+            setPadding(ph, dp(2f).toInt(), ph, dp(2f).toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(4f).toInt() }
             visibility = View.GONE
         }
         val view = LinearLayout(context).apply {
@@ -107,6 +137,7 @@ class FloatingWindow(private val context: Context, private val settings: Setting
             val p = dp(8f).toInt()
             setPadding(p, p, p, p)
             background = this@FloatingWindow.background
+            addView(cameraHeader)
             addView(speedText)
             addView(unit)
             addView(limitText)
@@ -189,6 +220,8 @@ class FloatingWindow(private val context: Context, private val settings: Setting
         private const val COLOR_DANGER = 0xF0F04438.toInt()
         private const val COLOR_TEXT = 0xFFF2F4F7.toInt()
         private const val COLOR_OK = 0xFF32D583.toInt()
+        private const val COLOR_WARN = 0xFFFF9F1C.toInt()
+        private const val COLOR_CAMERA = 0xFFFFD60A.toInt()
 
         fun canDraw(context: Context) = AndroidSettings.canDrawOverlays(context)
     }

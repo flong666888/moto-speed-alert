@@ -4,9 +4,9 @@ package com.moto.speedalert
  * Decides when the overspeed beeping starts and stops.
  *
  * Beeping starts after [confirmFixes] consecutive GPS fixes at or above the threshold
- * (so a single GPS glitch does not trigger it) and stops on the first fix below it.
+ * (default 1 = immediately) and stops on the first fix below it.
  */
-class OverspeedDetector(private val confirmFixes: Int = 2) {
+class OverspeedDetector(private val confirmFixes: Int = 1) {
     var alarming = false
         private set
     private var overCount = 0

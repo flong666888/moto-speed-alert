@@ -11,7 +11,11 @@ data class RideState(
     val limit: Int = 50,
     val limitSource: LimitSource = LimitSource.DEFAULT,
     val threshold: Int = 57,
+    /** At or above the threshold (shown on screen even when silent). */
     val overspeed: Boolean = false,
+    /** Beeping right now (over the threshold, and in a camera zone if camera-only mode). */
+    val alarming: Boolean = false,
+    val cameraOnly: Boolean = true,
     val roadName: String? = null,
     val camera: CameraHit? = null,
     val status: String = "",

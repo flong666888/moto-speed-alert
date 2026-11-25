@@ -27,7 +27,10 @@ class MainActivity : Activity() {
     private lateinit var limitView: TextView
     private lateinit var thresholdView: TextView
     private lateinit var sourceView: TextView
-    private lateinit var cameraView: TextView
+    private lateinit var cameraBanner: View
+    private lateinit var cameraTitle: TextView
+    private lateinit var cameraDetail: TextView
+    private var bannerPulse: android.animation.ObjectAnimator? = null
     private lateinit var statusView: TextView
     private lateinit var startStop: Button
     private lateinit var speedPanel: View
@@ -43,7 +46,9 @@ class MainActivity : Activity() {
         limitView = findViewById(R.id.limit)
         thresholdView = findViewById(R.id.threshold)
         sourceView = findViewById(R.id.source)
-        cameraView = findViewById(R.id.camera)
+        cameraBanner = findViewById(R.id.cameraBanner)
+        cameraTitle = findViewById(R.id.cameraTitle)
+        cameraDetail = findViewById(R.id.cameraDetail)
         statusView = findViewById(R.id.status)
         startStop = findViewById(R.id.startStop)
         speedPanel = findViewById(R.id.speedPanel)
@@ -182,32 +187,58 @@ class MainActivity : Activity() {
         if (s.running) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
+        val inCameraZone = s.running && s.camera != null
         if (!s.running || !s.hasFix) {
             speedView.text = "--"
             speedView.setTextColor(getColor(R.color.text))
             speedPanel.setBackgroundResource(R.drawable.card)
         } else {
             speedView.text = Math.round(s.speedKmh).toString()
-            speedView.setTextColor(getColor(if (s.overspeed) R.color.text else R.color.ok))
-            if (s.overspeed) speedPanel.setBackgroundColor(getColor(R.color.danger))
-            else speedPanel.setBackgroundResource(R.drawable.card)
+            speedView.setTextColor(
+                getColor(
+                    when {
+                        s.alarming -> R.color.text
+                        s.overspeed -> R.color.warn // over, but silent (no camera)
+                        else -> R.color.ok
+                    }
+                )
+            )
+            when {
+                s.alarming -> speedPanel.setBackgroundColor(getColor(R.color.danger))
+                inCameraZone -> speedPanel.setBackgroundResource(R.drawable.card_camera)
+                else -> speedPanel.setBackgroundResource(R.drawable.card)
+            }
         }
 
         val limit = if (s.running) s.limit else settings.defaultLimit
         val threshold = if (s.running) s.threshold else settings.defaultLimit + settings.tolerance
         limitView.text = limit.toString()
-        thresholdView.text = "達到 $threshold km/h 開始嗶嗶警告"
+        val cameraOnly = if (s.running) s.cameraOnly else settings.cameraOnlyAlarm
+        thresholdView.text = if (cameraOnly) "測速照相路段達到 $threshold km/h 立即嗶嗶"
+        else "達到 $threshold km/h 立即嗶嗶"
         sourceView.text = if (s.running && s.hasFix) {
             "限速來源：${s.limitSource.label}" + (s.roadName?.let { "｜$it" } ?: "")
         } else ""
 
         val cam = s.camera
-        if (s.running && cam != null) {
-            cameraView.visibility = View.VISIBLE
+        if (inCameraZone && cam != null) {
             val kind = if (cam.camera.section) "區間測速" else "測速照相"
-            cameraView.text = "📷 前方 ${cam.distance.toInt()} m $kind｜限速 ${cam.camera.limit}\n${cam.camera.address}"
-        } else {
-            cameraView.visibility = View.GONE
+            cameraTitle.text = "📷 $kind  前方 ${cam.distance.toInt()} m"
+            cameraDetail.text = "限速 ${cam.camera.limit}｜${cam.camera.address}"
+            if (cameraBanner.visibility != View.VISIBLE) {
+                cameraBanner.visibility = View.VISIBLE
+                bannerPulse = android.animation.ObjectAnimator.ofFloat(cameraBanner, "alpha", 1f, 0.45f).apply {
+                    duration = 600
+                    repeatMode = android.animation.ValueAnimator.REVERSE
+                    repeatCount = android.animation.ValueAnimator.INFINITE
+                    start()
+                }
+            }
+        } else if (cameraBanner.visibility == View.VISIBLE) {
+            bannerPulse?.cancel()
+            bannerPulse = null
+            cameraBanner.alpha = 1f
+            cameraBanner.visibility = View.GONE
         }
     }
 
@@ -264,6 +295,10 @@ class MainActivity : Activity() {
         }
 
         switchRow("依道路自動切換限速", settings.autoLimit) { settings.autoLimit = it }
+        switchRow("只在測速照相路段警告超速", settings.cameraOnlyAlarm) {
+            settings.cameraOnlyAlarm = it
+            notifyServiceSettingsChanged()
+        }
         stepperRow("超過限速多少開始警告", "km/h", { settings.tolerance }, { settings.tolerance = it }, 1, 0, 30)
         stepperRow("預設／手動限速", "km/h", { settings.defaultLimit }, { settings.defaultLimit = it }, 10, 20, 110)
         switchRow("浮動視窗（切到其他 App 時顯示車速）", settings.floatingWindow) {
@@ -279,7 +314,7 @@ class MainActivity : Activity() {
             renderOverlayStatus(this)
         })
         switchRow("測速照相提醒", settings.cameraAlert) { settings.cameraAlert = it }
-        stepperRow("照相點提前提醒距離", "m", { settings.cameraDistance }, { settings.cameraDistance = it }, 100, 100, 1000)
+        stepperRow("測速照相路段範圍（照相點前）", "m", { settings.cameraDistance }, { settings.cameraDistance = it }, 100, 100, 1000)
 
         root.addView(TextView(this).apply {
             text = "警報音量"

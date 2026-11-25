@@ -19,6 +19,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("autoLimit", true)
         set(v) = prefs.edit().putBoolean("autoLimit", v).apply()
 
+    /** Beep for overspeed only while approaching a speed camera. */
+    var cameraOnlyAlarm: Boolean
+        get() = prefs.getBoolean("cameraOnlyAlarm", true)
+        set(v) = prefs.edit().putBoolean("cameraOnlyAlarm", v).apply()
+
     var cameraAlert: Boolean
         get() = prefs.getBoolean("cameraAlert", true)
         set(v) = prefs.edit().putBoolean("cameraAlert", v).apply()

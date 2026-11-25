@@ -17,29 +17,25 @@ class LogicTest {
         val d = OverspeedDetector()
         val threshold = 50 + 7
         assertFalse(d.update(56.9, threshold))
-        assertFalse(d.update(57.0, threshold)) // first fix over: wait for confirmation
-        assertTrue(d.update(57.4, threshold)) // second consecutive fix: beep
+        assertTrue(d.update(57.0, threshold)) // immediately at 57
         assertTrue(d.update(60.0, threshold))
         assertFalse(d.update(56.5, threshold)) // stops as soon as we slow down
     }
 
     @Test
-    fun singleGpsSpikeDoesNotBeep() {
-        val d = OverspeedDetector()
+    fun optionalConfirmationIgnoresSingleSpike() {
+        val d = OverspeedDetector(confirmFixes = 2)
         assertFalse(d.update(70.0, 57))
         assertFalse(d.update(50.0, 57))
         assertFalse(d.update(70.0, 57))
+        assertTrue(d.update(70.0, 57))
     }
 
     @Test
     fun otherLimitsUseSameTolerance() {
         for ((limit, beepAt) in listOf(40 to 47, 60 to 67, 70 to 77)) {
-            val d = OverspeedDetector()
-            d.update(beepAt.toDouble(), limit + 7)
-            assertTrue(d.update(beepAt.toDouble(), limit + 7))
-            val d2 = OverspeedDetector()
-            d2.update(beepAt - 0.5, limit + 7)
-            assertFalse(d2.update(beepAt - 0.5, limit + 7))
+            assertTrue(OverspeedDetector().update(beepAt.toDouble(), limit + 7))
+            assertFalse(OverspeedDetector().update(beepAt - 0.5, limit + 7))
         }
     }
 

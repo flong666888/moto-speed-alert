@@ -7,6 +7,7 @@
     <color name="ok">#FF32D583</color>
     <color name="danger">#FFF04438</color>
     <color name="limit_ring">#FFE5484D</color>
+    <color name="warn">#FFFF9F1C</color>
     <color name="accent">#FF2E90FA</color>
     <color name="icon_bg">#FF1C232B</color>
 </resources>

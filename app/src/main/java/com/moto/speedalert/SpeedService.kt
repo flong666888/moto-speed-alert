@@ -93,9 +93,7 @@ class SpeedService : Service(), LocationListener {
         val heading = headingOf(loc, speedKmh)
         lastFix = loc
 
-        val cameraHit = if (heading != null) {
-            cameras.nearestAhead(loc.latitude, loc.longitude, heading, settings.cameraDistance.toDouble())
-        } else null
+        val cameraHit = cameraZone(loc, heading, now)
 
         val roadMatch = if (settings.autoLimit) {
             Roads.match(roadDb?.near(loc.latitude, loc.longitude) ?: emptyList(), loc.latitude, loc.longitude, heading)
@@ -106,7 +104,8 @@ class SpeedService : Service(), LocationListener {
             auto = settings.autoLimit,
             defaultLimit = settings.defaultLimit,
             camera = cameraHit,
-            cameraLimitRange = CAMERA_LIMIT_RANGE,
+            // In a camera zone the camera's posted limit is the one that counts.
+            cameraLimitRange = settings.cameraDistance.toDouble() + 50,
             road = roadMatch,
         )
         val threshold = resolved.limit + settings.tolerance
@@ -119,7 +118,8 @@ class SpeedService : Service(), LocationListener {
                 beeper.cameraAlert()
             }
         }
-        beeper.setOverspeed(over)
+        val alarming = over && (!settings.cameraOnlyAlarm || cameraHit != null)
+        beeper.setOverspeed(alarming)
 
         val status = when {
             !settings.autoLimit -> "手動限速模式"
@@ -136,16 +136,44 @@ class SpeedService : Service(), LocationListener {
                 limitSource = resolved.source,
                 threshold = threshold,
                 overspeed = over,
+                alarming = alarming,
+                cameraOnly = settings.cameraOnlyAlarm,
                 roadName = roadMatch?.road?.name,
                 camera = cameraHit,
                 status = status,
             )
         )
-        val text = "時速 ${speedKmh.toInt()}｜限速 ${resolved.limit}" + if (over) "｜超速！" else ""
+        val text = "時速 ${speedKmh.toInt()}｜限速 ${resolved.limit}" +
+            (if (cameraHit != null) "｜📷 測速照相 ${cameraHit.distance.toInt()} m" else "") +
+            (if (alarming) "｜超速！" else "")
         if (text != lastNotifText) {
             lastNotifText = text
             getSystemService(NotificationManager::class.java).notify(NOTIF_ID, buildNotification(text))
         }
+    }
+
+    private var lastCamera: Camera? = null
+    private var lastCameraAt = 0L
+
+    /**
+     * The speed camera we are approaching, if any. Kept for a few seconds when a noisy
+     * GPS heading briefly loses it, so the zone (and the beeping) does not flicker.
+     */
+    private fun cameraZone(loc: Location, heading: Double?, now: Long): CameraHit? {
+        val range = settings.cameraDistance.toDouble()
+        val hit = heading?.let { cameras.nearestAhead(loc.latitude, loc.longitude, it, range) }
+        if (hit != null) {
+            lastCamera = hit.camera
+            lastCameraAt = now
+            return hit
+        }
+        val prev = lastCamera ?: return null
+        if (now - lastCameraAt > CAMERA_STICKY_MS) {
+            lastCamera = null
+            return null
+        }
+        val d = Geo.distance(loc.latitude, loc.longitude, prev.lat, prev.lon)
+        return if (d <= range) CameraHit(prev, d) else null
     }
 
     private fun speedFromPrevious(loc: Location): Double {
@@ -218,7 +246,7 @@ class SpeedService : Service(), LocationListener {
         private const val CHANNEL = "ride"
         private const val NOTIF_ID = 1
         private const val MIN_HEADING_SPEED = 5.0 // km/h
-        private const val CAMERA_LIMIT_RANGE = 200.0 // m: use the camera's posted limit this close
+        private const val CAMERA_STICKY_MS = 3_000L
         private const val CAMERA_REALERT_MS = 5 * 60_000L
     }
 }
