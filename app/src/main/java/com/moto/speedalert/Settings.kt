@@ -28,6 +28,20 @@ class Settings(context: Context) {
         get() = prefs.getInt("cameraDistance", 400)
         set(v) = prefs.edit().putInt("cameraDistance", v).apply()
 
+    /** Floating speed bubble over other apps while riding. */
+    var floatingWindow: Boolean
+        get() = prefs.getBoolean("floatingWindow", true)
+        set(v) = prefs.edit().putBoolean("floatingWindow", v).apply()
+
+    /** Last dragged bubble position in pixels; -1 = default. */
+    var overlayX: Int
+        get() = prefs.getInt("overlayX", -1)
+        set(v) = prefs.edit().putInt("overlayX", v).apply()
+
+    var overlayY: Int
+        get() = prefs.getInt("overlayY", -1)
+        set(v) = prefs.edit().putInt("overlayY", v).apply()
+
     /** 0..100 */
     var volume: Int
         get() = prefs.getInt("volume", 100)

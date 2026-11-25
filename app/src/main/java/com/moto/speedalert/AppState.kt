@@ -25,6 +25,15 @@ object AppState {
     @Volatile var state = RideState()
         private set
 
+    /** True while MainActivity is on screen (the floating window hides then). */
+    @Volatile var uiVisible = false
+        private set
+
+    fun setUiVisible(v: Boolean) {
+        uiVisible = v
+        update(state)
+    }
+
     fun update(s: RideState) {
         state = s
         main.post { listeners.toList().forEach { it(s) } }

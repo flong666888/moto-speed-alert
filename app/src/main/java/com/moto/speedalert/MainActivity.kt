@@ -57,9 +57,11 @@ class MainActivity : Activity() {
     override fun onStart() {
         super.onStart()
         AppState.listen(listener)
+        AppState.setUiVisible(true)
     }
 
     override fun onStop() {
+        AppState.setUiVisible(false)
         AppState.unlisten(listener)
         super.onStop()
     }
@@ -97,6 +99,14 @@ class MainActivity : Activity() {
 
     private fun startRide() {
         startForegroundService(Intent(this, SpeedService::class.java))
+        if (settings.floatingWindow && !FloatingWindow.canDraw(this)) requestOverlayPermission()
+    }
+
+    private fun requestOverlayPermission() {
+        Toast.makeText(this, "請允許「顯示在其他應用程式上層」，才能顯示浮動視窗", Toast.LENGTH_LONG).show()
+        startActivity(
+            Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+        )
     }
 
     private fun stopRide() {
@@ -205,6 +215,11 @@ class MainActivity : Activity() {
         switchRow("依道路自動切換限速", settings.autoLimit) { settings.autoLimit = it }
         stepperRow("超過限速多少開始警告", "km/h", { settings.tolerance }, { settings.tolerance = it }, 1, 0, 30)
         stepperRow("預設／手動限速", "km/h", { settings.defaultLimit }, { settings.defaultLimit = it }, 10, 20, 110)
+        switchRow("浮動視窗（切到其他 App 時顯示車速）", settings.floatingWindow) {
+            settings.floatingWindow = it
+            if (it && !FloatingWindow.canDraw(this)) requestOverlayPermission()
+            notifyServiceSettingsChanged()
+        }
         switchRow("測速照相提醒", settings.cameraAlert) { settings.cameraAlert = it }
         stepperRow("照相點提前提醒距離", "m", { settings.cameraDistance }, { settings.cameraDistance = it }, 100, 100, 1000)
 

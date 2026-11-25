@@ -25,6 +25,7 @@ class SpeedService : Service(), LocationListener {
     private lateinit var settings: Settings
     private lateinit var beeper: Beeper
     private lateinit var cameras: CameraDb
+    private lateinit var floating: FloatingWindow
     private val roads = RoadFetcher()
     private val detector = OverspeedDetector()
     private val resolver = LimitResolver()
@@ -41,6 +42,8 @@ class SpeedService : Service(), LocationListener {
         settings = Settings(this)
         beeper = Beeper(this).also { it.volume = settings.volume / 100f }
         cameras = assets.open("cameras.csv").reader(Charsets.UTF_8).use { CameraDb.parse(it) }
+        floating = FloatingWindow(this, settings)
+        AppState.listen(floating.listener)
         createChannel()
     }
 
@@ -52,6 +55,7 @@ class SpeedService : Service(), LocationListener {
         }
         if (intent?.action == ACTION_SETTINGS_CHANGED) {
             beeper.volume = settings.volume / 100f
+            AppState.update(AppState.state) // re-evaluate the floating window
             return START_STICKY
         }
         startForeground(NOTIF_ID, buildNotification("準備中，等待 GPS 定位…"), ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
@@ -163,6 +167,8 @@ class SpeedService : Service(), LocationListener {
 
     override fun onDestroy() {
         (getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(this)
+        AppState.unlisten(floating.listener)
+        floating.release()
         beeper.release()
         roads.shutdown()
         wakeLock?.let { if (it.isHeld) it.release() }
