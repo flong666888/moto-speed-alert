@@ -26,7 +26,8 @@ class SpeedService : Service(), LocationListener {
     private lateinit var beeper: Beeper
     private lateinit var cameras: CameraDb
     private lateinit var floating: FloatingWindow
-    private val roads = RoadFetcher()
+    @Volatile private var roadDb: RoadDb? = null
+    @Volatile private var roadDbError: String? = null
     private val detector = OverspeedDetector()
     private val resolver = LimitResolver()
     private val cameraAlertedAt = HashMap<Camera, Long>()
@@ -40,6 +41,15 @@ class SpeedService : Service(), LocationListener {
     override fun onCreate() {
         super.onCreate()
         settings = Settings(this)
+        // ~1-2 s to unpack and index all of Taiwan; do it off the main thread.
+        Thread {
+            try {
+                roadDb = assets.open("roads.bin").use { RoadDb.parse(it.readBytes()) }
+            } catch (e: Exception) {
+                roadDbError = e.message ?: e.javaClass.simpleName
+                android.util.Log.e("SpeedService", "roads.bin failed", e)
+            }
+        }.start()
         beeper = Beeper(this).also { it.volume = settings.volume / 100f }
         cameras = assets.open("cameras.csv").reader(Charsets.UTF_8).use { CameraDb.parse(it) }
         floating = FloatingWindow(this, settings)
@@ -88,7 +98,7 @@ class SpeedService : Service(), LocationListener {
         } else null
 
         val roadMatch = if (settings.autoLimit) {
-            Roads.match(roads.roadsAt(loc.latitude, loc.longitude), loc.latitude, loc.longitude, heading)
+            Roads.match(roadDb?.near(loc.latitude, loc.longitude) ?: emptyList(), loc.latitude, loc.longitude, heading)
         } else null
 
         val resolved = resolver.resolve(
@@ -113,8 +123,8 @@ class SpeedService : Service(), LocationListener {
 
         val status = when {
             !settings.autoLimit -> "手動限速模式"
-            !roads.hasData && roads.lastError != null -> "道路資料下載失敗，使用預設限速（${roads.lastError}）"
-            !roads.hasData -> "下載附近道路資料中…"
+            roadDbError != null -> "道路資料讀取失敗（$roadDbError），使用預設限速"
+            roadDb == null -> "載入道路資料中…"
             else -> "GPS 精度 ±${loc.accuracy.toInt()} m"
         }
         AppState.update(
@@ -170,7 +180,6 @@ class SpeedService : Service(), LocationListener {
         AppState.unlisten(floating.listener)
         floating.release()
         beeper.release()
-        roads.shutdown()
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         detector.reset()

@@ -1,0 +1,45 @@
+# Rebuilds the offline Taiwan road speed-limit data (app/src/main/assets/roads.bin)
+# from the latest OpenStreetMap extract, and the speed camera list from the NPA open data.
+# Run it from the Actions tab ("Run workflow"); it commits the new data to the branch it ran on.
+name: Update map data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install osmium
+        run: pip install osmium==4.3.2
+
+      - name: Download Taiwan OSM extract
+        run: curl -fsSL --retry 3 -o taiwan.osm.pbf https://download.geofabrik.de/asia/taiwan-latest.osm.pbf
+
+      - name: Build roads.bin
+        run: python3 tools/build_roads.py taiwan.osm.pbf app/src/main/assets/roads.bin
+
+      - name: Update speed cameras
+        continue-on-error: true
+        run: |
+          curl -fsSL --retry 3 -o cams.csv "https://opdadm.moi.gov.tw/api/v1/no-auth/resource/api/dataset/EA5E6FCD-B82D-43B7-A5CF-E9893253187E/resource/CD32FD37-EA0D-4F76-8C5F-7E2514FA4E1F/download"
+          python3 tools/build_cameras.py cams.csv app/src/main/assets/cameras.csv
+
+      - name: Commit data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/assets/roads.bin app/src/main/assets/cameras.csv
+          if git diff --cached --quiet; then echo "no changes"; exit 0; fi
+          git commit -m "Update map data from OpenStreetMap and NPA open data"
+          git push

@@ -92,7 +92,7 @@ object Roads {
      */
     fun match(
         roads: List<Road>, lat: Double, lon: Double, heading: Double?,
-        maxDistance: Double = 30.0,
+        maxDistance: Double = 25.0,
     ): RoadMatch? {
         var best: RoadMatch? = null
         var bestScore = Double.MAX_VALUE
@@ -111,7 +111,8 @@ object Roads {
                     val diff = if (forward) diffFwd else 180 - diffFwd
                     // Wrong way on a one-way road: almost certainly a different road.
                     if ((r.oneway == 1 && !forward) || (r.oneway == -1 && forward)) penalty += 50
-                    // Roads crossing our path (intersections) should lose to the one we ride on.
+                    // A road crossing our path (intersection) is not the one we ride on.
+                    if (diff > 45) continue
                     penalty += diff / 3.0
                 }
                 val score = d + penalty
