@@ -32,6 +32,7 @@ class CameraDb(val cameras: List<Camera>) {
     fun nearestAhead(
         lat: Double, lon: Double, heading: Double,
         maxDistance: Double, aheadCone: Double = 40.0,
+        skip: (Camera) -> Boolean = { false },
     ): CameraHit? {
         var best: CameraHit? = null
         // ~0.01 deg is ~1.1 km; cheap prefilter before the exact distance.
@@ -40,11 +41,11 @@ class CameraDb(val cameras: List<Camera>) {
             if (kotlin.math.abs(c.lat - lat) > pad || kotlin.math.abs(c.lon - lon) > pad) continue
             val d = Geo.distance(lat, lon, c.lat, c.lon)
             if (d > maxDistance) continue
-            // Very close: bearing to the point is unstable, accept it.
-            if (d > 30) {
-                val b = Geo.bearing(lat, lon, c.lat, c.lon)
-                if (Geo.angleDiff(b, heading) > aheadCone) continue
-            }
+            if (skip(c)) continue
+            // Far: must be inside the cone ahead. Close: GPS makes the exact bearing
+            // shaky, so only require that it is not behind us (i.e. not yet passed).
+            val off = Geo.angleDiff(Geo.bearing(lat, lon, c.lat, c.lon), heading)
+            if (off > (if (d > 30) aheadCone else 90.0)) continue
             if (!c.appliesTo(heading)) continue
             if (best == null || d < best.distance) best = CameraHit(c, d)
         }

@@ -154,27 +154,42 @@ class SpeedService : Service(), LocationListener {
 
     private var lastCamera: Camera? = null
     private var lastCameraAt = 0L
+    /** Cameras we have just ridden past, so GPS jitter cannot bring them back. */
+    private val passedAt = HashMap<Camera, Long>()
 
     /**
-     * The speed camera we are approaching, if any. Kept for a few seconds when a noisy
-     * GPS heading briefly loses it, so the zone (and the beeping) does not flicker.
+     * The speed camera we are approaching, if any. The zone ends the moment we pass the
+     * camera. While still before it, a camera that the noisy GPS heading briefly loses
+     * is kept for a few seconds so the zone (and the beeping) does not flicker.
      */
     private fun cameraZone(loc: Location, heading: Double?, now: Long): CameraHit? {
         val range = settings.cameraDistance.toDouble()
-        val hit = heading?.let { cameras.nearestAhead(loc.latitude, loc.longitude, it, range) }
+        passedAt.entries.removeAll { now - it.value > PASSED_FORGET_MS }
+        val hit = heading?.let { h ->
+            cameras.nearestAhead(loc.latitude, loc.longitude, h, range) { it in passedAt }
+        }
+        val prev = lastCamera
+        if (prev != null && prev != hit?.camera && heading != null && isPassed(loc, heading, prev)) {
+            passedAt[prev] = now // just rode past it: zone over, immediately
+            lastCamera = null
+        }
         if (hit != null) {
             lastCamera = hit.camera
             lastCameraAt = now
             return hit
         }
-        val prev = lastCamera ?: return null
+        val kept = lastCamera ?: return null
         if (now - lastCameraAt > CAMERA_STICKY_MS) {
             lastCamera = null
             return null
         }
-        val d = Geo.distance(loc.latitude, loc.longitude, prev.lat, prev.lon)
-        return if (d <= range) CameraHit(prev, d) else null
+        val d = Geo.distance(loc.latitude, loc.longitude, kept.lat, kept.lon)
+        return if (d <= range) CameraHit(kept, d) else null
     }
+
+    /** The camera is behind us (more than 90 degrees off our heading). */
+    private fun isPassed(loc: Location, heading: Double, c: Camera): Boolean =
+        Geo.angleDiff(Geo.bearing(loc.latitude, loc.longitude, c.lat, c.lon), heading) > 90
 
     private fun speedFromPrevious(loc: Location): Double {
         val prev = lastFix ?: return 0.0
@@ -247,6 +262,7 @@ class SpeedService : Service(), LocationListener {
         private const val NOTIF_ID = 1
         private const val MIN_HEADING_SPEED = 5.0 // km/h
         private const val CAMERA_STICKY_MS = 3_000L
+        private const val PASSED_FORGET_MS = 2 * 60_000L
         private const val CAMERA_REALERT_MS = 5 * 60_000L
     }
 }

@@ -137,6 +137,18 @@ class LogicTest {
     }
 
     @Test
+    fun cameraZoneEndsRightAfterPassing() {
+        val cam = Camera(25.003, 121.5, 50, 180, -1, false, "測試路")
+        val db = CameraDb(listOf(cam))
+        // Riding south: 20 m before the camera -> still in the zone.
+        assertNotNull(db.nearestAhead(25.00318, 121.5, 180.0, 400.0))
+        // 5 m past it -> gone at once (no 30 m grace any more).
+        assertNull(db.nearestAhead(25.002955, 121.5, 180.0, 400.0))
+        // A camera we already passed can be skipped explicitly.
+        assertNull(db.nearestAhead(25.006, 121.5, 180.0, 400.0) { it == cam })
+    }
+
+    @Test
     fun twoWayCamera() {
         val cam = Camera(25.003, 121.5, 50, 0, 180, false, "雙向")
         val db = CameraDb(listOf(cam))
