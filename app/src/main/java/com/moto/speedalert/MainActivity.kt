@@ -153,6 +153,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        renderProbeStatus()
         overlayStatus?.let { renderOverlayStatus(it) }
     }
 
@@ -350,6 +351,7 @@ class MainActivity : Activity() {
             setOnClickListener { requestIgnoreBatteryOptimizations() }
         })
         root.addView(buttons)
+        buildProbeSection(root)
     }
 
     private fun testSound() {
@@ -368,6 +370,124 @@ class MainActivity : Activity() {
         startActivity(
             Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
         )
+    }
+
+    // ---- probe (test tool) ---------------------------------------------------
+
+    private var probeStatus: TextView? = null
+
+    private fun buildProbeSection(root: LinearLayout) {
+        root.addView(TextView(this).apply {
+            text = "偵測神盾（測試）"
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(getColor(R.color.text))
+            setPadding(0, dp(20), 0, dp(4))
+        })
+        probeStatus = TextView(this).apply {
+            textSize = 14f
+            setTextColor(getColor(R.color.muted))
+        }
+        root.addView(probeStatus)
+        renderProbeStatus()
+
+        fun row(vararg items: Pair<String, () -> Unit>) {
+            val r = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for ((label, action) in items) {
+                r.addView(Button(this).apply {
+                    text = label
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    setOnClickListener { action() }
+                })
+            }
+            root.addView(r)
+        }
+        row("1. 選擇神盾" to { pickProbeApp() }, "2. 開啟偵測權限" to { openAccessibilitySettings() })
+        row("3. 查看偵測紀錄" to { showProbeLog() })
+    }
+
+    private fun renderProbeStatus() {
+        val v = probeStatus ?: return
+        val pkg = settings.probePackage
+        val label = pkg?.let { appLabel(it) ?: it } ?: "尚未選擇"
+        val on = isProbeEnabled()
+        v.text = "目標 App：$label\n偵測權限：" + (if (on) "已開啟 ✓" else "未開啟") +
+            "\n用法：選好神盾、開啟權限，同時開著神盾和本 App 騎車；遇到神盾警告後回來按「查看偵測紀錄」→「複製」貼給 Claude。"
+    }
+
+    private fun isProbeEnabled(): Boolean {
+        val enabled = AndroidSettings.Secure.getString(contentResolver, AndroidSettings.Secure.ENABLED_ACCESSIBILITY_SERVICES)
+            ?: return false
+        return enabled.split(':').any { it.startsWith("$packageName/") && it.endsWith("ProbeService") }
+    }
+
+    private fun appLabel(pkg: String): String? = try {
+        packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun pickProbeApp() {
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = packageManager.queryIntentActivities(launcher, 0)
+            .map { it.activityInfo.packageName to it.loadLabel(packageManager).toString() }
+            .filter { it.first != packageName }
+            .distinctBy { it.first }
+            .sortedWith(compareByDescending<Pair<String, String>> { "神盾" in it.second || "測速" in it.second }.thenBy { it.second })
+        val labels = apps.map { (pkg, label) -> if ("神盾" in label || "測速" in label) "★ $label" else label }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("選擇要偵測的 App（神盾）")
+            .setItems(labels.toTypedArray()) { _, i ->
+                settings.probePackage = apps[i].first
+                ProbeLog.append(this, "目標改為 ${apps[i].second}（${apps[i].first}）")
+                renderProbeStatus()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun openAccessibilitySettings() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("開啟偵測權限")
+            .setMessage(
+                "在「無障礙」設定裡找到「機車超速提醒：偵測測試」並開啟。\n\n" +
+                    "如果是灰色、顯示「受限制的設定」：先到 設定 → 應用程式 → 機車超速提醒 → 右上角「⋮」→「允許受限制的設定」，再回來開啟。\n\n" +
+                    "這個權限只用來記錄你選的那一個 App，測試完可以關掉。"
+            )
+            .setPositiveButton("前往設定") { _, _ ->
+                try {
+                    startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS))
+                } catch (_: Exception) {
+                    Toast.makeText(this, "請到 設定 → 無障礙 手動開啟", Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNeutralButton("應用程式資訊") { _, _ -> openAppInfo() }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun showProbeLog() {
+        val log = ProbeLog.read(this).ifEmpty { "（還沒有紀錄）" }
+        val tv = TextView(this).apply {
+            text = log
+            textSize = 11f
+            setTextIsSelectable(true)
+            typeface = android.graphics.Typeface.MONOSPACE
+            setPadding(dp(16), dp(8), dp(16), dp(8))
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(tv) }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("偵測紀錄")
+            .setView(scroll)
+            .setPositiveButton("複製") { _, _ ->
+                val cm = getSystemService(android.content.ClipboardManager::class.java)
+                cm.setPrimaryClip(android.content.ClipData.newPlainText("probe", log))
+                Toast.makeText(this, "已複製，可以貼給 Claude", Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("清除") { _, _ -> ProbeLog.clear(this) }
+            .setNegativeButton("關閉", null)
+            .show()
+        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()

@@ -1,0 +1,143 @@
+package com.moto.speedalert
+
+import android.accessibilityservice.AccessibilityService
+import android.content.Context
+import android.graphics.Rect
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * TEST TOOL. Records what an accessibility service can see of ONE chosen app (the speed
+ * camera app picked in settings) so we can tell whether its warnings are readable.
+ * Events from every other app are ignored and never stored. Nothing is sent anywhere;
+ * the log stays in this app's private storage until the user clears it.
+ */
+class ProbeService : AccessibilityService() {
+
+    private lateinit var settings: Settings
+    private var lastDump = ""
+    private var lastWindows = ""
+
+    override fun onServiceConnected() {
+        settings = Settings(this)
+        ProbeLog.append(this, "偵測服務已啟動，目標：${settings.probePackage ?: "（尚未選擇）"}")
+    }
+
+    override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        val target = settings.probePackage ?: return
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            logTargetWindows(target)
+            return
+        }
+        if (event.packageName?.toString() != target) return
+
+        val sb = StringBuilder()
+        sb.append("事件 ").append(AccessibilityEvent.eventTypeToString(event.eventType))
+        event.className?.let { sb.append("｜class=").append(it) }
+        if (event.text.isNotEmpty()) sb.append("｜text=").append(event.text.joinToString(" / "))
+        event.contentDescription?.let { sb.append("｜desc=").append(it) }
+        sb.append("｜").append(ourContext())
+        val root = event.source?.let { src -> src.window?.root ?: src }
+        if (root != null) {
+            sb.append("\n").append(dumpTree(root))
+        }
+        val dump = sb.toString()
+        // Content-changed events repeat a lot; store only when something actually changed.
+        val key = dump.substringAfter("\n", dump)
+        if (key == lastDump) return
+        lastDump = key
+        ProbeLog.append(this, dump)
+    }
+
+    /** Lists the target app's windows (overlays included, where Android reports them). */
+    private fun logTargetWindows(target: String) {
+        val list = try { windows } catch (_: Exception) { emptyList<AccessibilityWindowInfo>() }
+        val sb = StringBuilder()
+        for (w in list) {
+            val root = w.root ?: continue
+            if (root.packageName?.toString() != target) continue
+            val r = Rect().also { w.getBoundsInScreen(it) }
+            sb.append("視窗 type=").append(windowType(w.type))
+                .append(" title=").append(w.title)
+                .append(" bounds=").append(r.toShortString())
+                .append("\n").append(dumpTree(root))
+        }
+        val text = sb.toString()
+        if (text == lastWindows) return
+        lastWindows = text
+        ProbeLog.append(this, if (text.isEmpty()) "（目標 App 目前沒有可見視窗）｜${ourContext()}" else text + "｜${ourContext()}")
+    }
+
+    private fun dumpTree(root: AccessibilityNodeInfo): String {
+        val sb = StringBuilder()
+        var count = 0
+        fun walk(n: AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || count >= MAX_NODES || depth > 25) return
+            count++
+            val r = Rect().also { n.getBoundsInScreen(it) }
+            sb.append("  ".repeat(depth)).append("- ").append(n.className?.toString()?.substringAfterLast('.'))
+            n.viewIdResourceName?.let { sb.append(" id=").append(it.substringAfter(":id/")) }
+            n.text?.let { if (it.isNotBlank()) sb.append(" text=\"").append(it).append('"') }
+            n.contentDescription?.let { if (it.isNotBlank()) sb.append(" desc=\"").append(it).append('"') }
+            sb.append(" ").append(r.toShortString()).append('\n')
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        walk(root, 0)
+        if (count >= MAX_NODES) sb.append("  …（節點太多，已截斷）\n")
+        return sb.toString()
+    }
+
+    /** What our own app knew at that moment, to line the two apps' warnings up. */
+    private fun ourContext(): String {
+        val s = AppState.state
+        if (!s.running || !s.hasFix) return "本App：未在測速"
+        val cam = s.camera?.let { "照相點 ${it.distance.toInt()}m 限${it.camera.limit}" } ?: "無照相點"
+        return "本App：時速${s.speedKmh.toInt()} 限速${s.limit} $cam"
+    }
+
+    private fun windowType(t: Int) = when (t) {
+        AccessibilityWindowInfo.TYPE_APPLICATION -> "APPLICATION"
+        AccessibilityWindowInfo.TYPE_SYSTEM -> "SYSTEM"
+        AccessibilityWindowInfo.TYPE_INPUT_METHOD -> "IME"
+        AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY -> "A11Y_OVERLAY"
+        else -> t.toString()
+    }
+
+    override fun onInterrupt() {}
+
+    companion object {
+        private const val MAX_NODES = 80
+    }
+}
+
+/** Private, size-capped log file for the probe. */
+object ProbeLog {
+    private const val MAX_BYTES = 400_000
+    private val fmt = SimpleDateFormat("MM-dd HH:mm:ss", Locale.TAIWAN)
+
+    private fun file(c: Context) = File(c.filesDir, "probe.log")
+
+    @Synchronized
+    fun append(c: Context, text: String) {
+        val f = file(c)
+        if (f.length() > MAX_BYTES) {
+            // Keep the newer half.
+            val keep = f.readText().takeLast(MAX_BYTES / 2)
+            f.writeText(keep)
+        }
+        f.appendText("[${fmt.format(Date())}] $text\n\n")
+    }
+
+    @Synchronized
+    fun read(c: Context): String = file(c).takeIf { it.exists() }?.readText().orEmpty()
+
+    @Synchronized
+    fun clear(c: Context) {
+        file(c).delete()
+    }
+}

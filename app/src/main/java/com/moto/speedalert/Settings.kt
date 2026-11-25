@@ -47,6 +47,11 @@ class Settings(context: Context) {
         get() = prefs.getInt("overlayY", -1)
         set(v) = prefs.edit().putInt("overlayY", v).apply()
 
+    /** Package of the app watched by the accessibility probe (test tool). */
+    var probePackage: String?
+        get() = prefs.getString("probePackage", null)
+        set(v) = prefs.edit().putString("probePackage", v).apply()
+
     /** 0..100 */
     var volume: Int
         get() = prefs.getInt("volume", 100)
