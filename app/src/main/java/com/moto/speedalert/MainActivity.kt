@@ -103,10 +103,61 @@ class MainActivity : Activity() {
     }
 
     private fun requestOverlayPermission() {
-        Toast.makeText(this, "請允許「顯示在其他應用程式上層」，才能顯示浮動視窗", Toast.LENGTH_LONG).show()
-        startActivity(
-            Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+        android.app.AlertDialog.Builder(this)
+            .setTitle("開啟浮動視窗權限")
+            .setMessage(
+                "請在接下來的頁面把「機車超速提醒」的「顯示在其他應用程式上層」打開。\n\n" +
+                    "如果開關是灰色、按了跳出「受限制的設定」：\n" +
+                    "1. 按下方「應用程式資訊」\n" +
+                    "2. 點右上角「⋮」→「允許受限制的設定」（需驗證指紋或密碼）\n" +
+                    "3. 再回來按「前往設定」打開權限\n\n" +
+                    "小米／紅米：在應用程式資訊 →「其他權限」→「顯示懸浮窗」。"
+            )
+            .setPositiveButton("前往設定") { _, _ -> openOverlaySettings() }
+            .setNeutralButton("應用程式資訊") { _, _ -> openAppInfo() }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** Different phone makers handle these intents differently; try them in order. */
+    private fun openOverlaySettings() {
+        val pkg = Uri.parse("package:$packageName")
+        val candidates = listOf(
+            Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, pkg),
+            Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION),
+            Intent("miui.intent.action.APP_PERM_EDITOR").putExtra("extra_pkgname", packageName),
+            Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, pkg),
         )
+        for (i in candidates) {
+            try {
+                startActivity(i)
+                return
+            } catch (_: Exception) {
+            }
+        }
+        Toast.makeText(this, "找不到權限設定頁，請到 設定 → 應用程式 → 機車超速提醒 手動開啟", Toast.LENGTH_LONG).show()
+    }
+
+    private fun openAppInfo() {
+        try {
+            startActivity(Intent(AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+        } catch (_: Exception) {
+            Toast.makeText(this, "請到 設定 → 應用程式 → 機車超速提醒", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        overlayStatus?.let { renderOverlayStatus(it) }
+    }
+
+    private var overlayStatus: TextView? = null
+
+    private fun renderOverlayStatus(v: TextView) {
+        val ok = FloatingWindow.canDraw(this)
+        v.text = if (ok) "浮動視窗權限：已允許 ✓" else "浮動視窗權限：尚未允許（點這裡設定）"
+        v.setTextColor(getColor(if (ok) R.color.ok else R.color.danger))
+        v.isClickable = !ok
     }
 
     private fun stopRide() {
@@ -220,6 +271,13 @@ class MainActivity : Activity() {
             if (it && !FloatingWindow.canDraw(this)) requestOverlayPermission()
             notifyServiceSettingsChanged()
         }
+        root.addView(TextView(this).apply {
+            textSize = 14f
+            setPadding(0, 0, 0, dp(8))
+            setOnClickListener { if (!FloatingWindow.canDraw(this@MainActivity)) requestOverlayPermission() }
+            overlayStatus = this
+            renderOverlayStatus(this)
+        })
         switchRow("測速照相提醒", settings.cameraAlert) { settings.cameraAlert = it }
         stepperRow("照相點提前提醒距離", "m", { settings.cameraDistance }, { settings.cameraDistance = it }, 100, 100, 1000)
 
