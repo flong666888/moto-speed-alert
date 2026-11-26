@@ -467,25 +467,29 @@ class MainActivity : Activity() {
     }
 
     private fun showProbeLog() {
-        val log = ProbeLog.read(this).ifEmpty { "（還沒有紀錄）" }
+        val short = ProbeLog.readCompact(this).ifEmpty { "（還沒有紀錄）" }
         val tv = TextView(this).apply {
-            text = log
+            text = short
             textSize = 11f
             setTextIsSelectable(true)
             typeface = android.graphics.Typeface.MONOSPACE
             setPadding(dp(16), dp(8), dp(16), dp(8))
         }
         val scroll = android.widget.ScrollView(this).apply { addView(tv) }
+        fun copy(label: String, text: String) {
+            val cm = getSystemService(android.content.ClipboardManager::class.java)
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("probe", text))
+            Toast.makeText(this, "已複製$label，可以貼給 Claude", Toast.LENGTH_SHORT).show()
+        }
         android.app.AlertDialog.Builder(this)
-            .setTitle("偵測紀錄")
+            .setTitle("偵測紀錄（精簡版）")
             .setView(scroll)
-            .setPositiveButton("複製") { _, _ ->
-                val cm = getSystemService(android.content.ClipboardManager::class.java)
-                cm.setPrimaryClip(android.content.ClipData.newPlainText("probe", log))
-                Toast.makeText(this, "已複製，可以貼給 Claude", Toast.LENGTH_SHORT).show()
+            .setPositiveButton("複製精簡版") { _, _ -> copy("精簡版", short) }
+            .setNegativeButton("複製完整版") { _, _ ->
+                // Full dumps can be huge; the newest part matters most.
+                copy("完整版（最後一段）", ProbeLog.read(this).takeLast(60_000))
             }
             .setNeutralButton("清除") { _, _ -> ProbeLog.clear(this) }
-            .setNegativeButton("關閉", null)
             .show()
         scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
     }

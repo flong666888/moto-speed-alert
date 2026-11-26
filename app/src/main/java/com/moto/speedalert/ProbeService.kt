@@ -52,6 +52,7 @@ class ProbeService : AccessibilityService() {
         if (key == lastDump) return
         lastDump = key
         ProbeLog.append(this, dump)
+        root?.let { compact("事件", it) }
     }
 
     /** Lists the target app's windows (overlays included, where Android reports them). */
@@ -62,6 +63,7 @@ class ProbeService : AccessibilityService() {
             val root = w.root ?: continue
             if (root.packageName?.toString() != target) continue
             val r = Rect().also { w.getBoundsInScreen(it) }
+            compact("視窗 " + windowType(w.type), root)
             sb.append("視窗 type=").append(windowType(w.type))
                 .append(" title=").append(w.title)
                 .append(" bounds=").append(r.toShortString())
@@ -73,11 +75,24 @@ class ProbeService : AccessibilityService() {
         ProbeLog.append(this, if (text.isEmpty()) "（目標 App 目前沒有可見視窗）｜${ourContext()}" else text + "｜${ourContext()}")
     }
 
+    private var lastCompact = ""
+
+    /** One short line per change, for the "copy short version" button. */
+    private fun compact(kind: String, root: AccessibilityNodeInfo) {
+        val sum = summary(root).trim().removePrefix("重點 ")
+        val rootId = root.viewIdResourceName?.substringAfter(":id/") ?: ""
+        val line = "$kind $rootId｜${sum.ifEmpty { "（無文字）" }}"
+        if (line == lastCompact) return
+        lastCompact = line
+        ProbeLog.appendCompact(this, "$line｜${ourContext()}")
+    }
+
     private fun dumpTree(root: AccessibilityNodeInfo): String {
         val sb = StringBuilder()
         var count = 0
         fun walk(n: AccessibilityNodeInfo?, depth: Int) {
             if (n == null || count >= MAX_NODES || depth > 25) return
+            if (depth > 0 && !onScreen(n)) return
             count++
             val r = Rect().also { n.getBoundsInScreen(it) }
             sb.append("  ".repeat(depth)).append("- ").append(n.className?.toString()?.substringAfterLast('.'))
@@ -104,14 +119,25 @@ class ProbeService : AccessibilityService() {
         fun walk(n: AccessibilityNodeInfo?, depth: Int) {
             if (n == null || visited > 600 || depth > 30) return
             visited++
-            val id = n.viewIdResourceName?.substringAfter(":id/")
+            if (!onScreen(n)) return // e.g. the settings page parked off-screen
+            val id = n.viewIdResourceName?.substringAfter(":id/") ?: n.className?.toString()?.substringAfterLast('.')
             val value = n.text?.takeIf { it.isNotBlank() } ?: n.contentDescription?.takeIf { it.isNotBlank() && it != "na" }
-            if (id != null && value != null && INTERESTING.containsMatchIn(id)) hits += "$id=$value"
+            if (value != null) hits += "$id=${value.toString().replace('\n', ' ')}"
             if (n.className?.contains("WebView") == true) return
             for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
         }
         walk(root, 0)
         return if (hits.isEmpty()) "" else "重點 " + hits.joinToString(" ") + "\n"
+    }
+
+    private val screen by lazy {
+        val m = resources.displayMetrics
+        Rect(0, 0, m.widthPixels, m.heightPixels + 400)
+    }
+
+    private fun onScreen(n: AccessibilityNodeInfo): Boolean {
+        val r = Rect().also { n.getBoundsInScreen(it) }
+        return r.width() > 0 && r.height() > 0 && Rect.intersects(r, screen)
     }
 
     /** What our own app knew at that moment, to line the two apps' warnings up. */
@@ -134,7 +160,6 @@ class ProbeService : AccessibilityService() {
 
     companion object {
         private const val MAX_NODES = 220
-        private val INTERESTING = Regex("cam|limit|speed|warn|dist|alert|ring|report|status|info|lock|float|sign", RegexOption.IGNORE_CASE)
     }
 }
 
@@ -144,6 +169,17 @@ object ProbeLog {
     private val fmt = SimpleDateFormat("MM-dd HH:mm:ss", Locale.TAIWAN)
 
     private fun file(c: Context) = File(c.filesDir, "probe.log")
+    private fun compactFile(c: Context) = File(c.filesDir, "probe_short.log")
+
+    @Synchronized
+    fun appendCompact(c: Context, text: String) {
+        val f = compactFile(c)
+        if (f.length() > MAX_BYTES / 4) f.writeText(f.readText().takeLast(MAX_BYTES / 8))
+        f.appendText("[${fmt.format(Date())}] $text\n")
+    }
+
+    @Synchronized
+    fun readCompact(c: Context): String = compactFile(c).takeIf { it.exists() }?.readText().orEmpty()
 
     @Synchronized
     fun append(c: Context, text: String) {
@@ -162,5 +198,6 @@ object ProbeLog {
     @Synchronized
     fun clear(c: Context) {
         file(c).delete()
+        compactFile(c).delete()
     }
 }

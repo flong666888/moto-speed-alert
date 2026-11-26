@@ -11,8 +11,8 @@ android {
         applicationId = "com.moto.speedalert"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.6.1-probe"
+        versionCode = 9
+        versionName = "1.6.2-probe"
     }
 
     signingConfigs {
