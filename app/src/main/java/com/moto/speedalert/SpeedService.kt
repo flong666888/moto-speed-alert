@@ -94,6 +94,7 @@ class SpeedService : Service(), LocationListener {
         lastFix = loc
 
         val cameraHit = cameraZone(loc, heading, now)
+        val shield = if (settings.shieldLink) ShieldState.current(now) else null
 
         val roadMatch = if (settings.autoLimit) {
             Roads.match(roadDb?.near(loc.latitude, loc.longitude) ?: emptyList(), loc.latitude, loc.longitude, heading)
@@ -108,7 +109,10 @@ class SpeedService : Service(), LocationListener {
             cameraLimitRange = settings.cameraDistance.toDouble() + 50,
             road = roadMatch,
         )
-        val threshold = resolved.limit + settings.tolerance
+        // 神盾 showing a number = that point's posted limit, which wins over everything.
+        val limit = shield?.limit ?: resolved.limit
+        val source = if (shield?.limit != null) LimitSource.SHIELD else resolved.source
+        val threshold = limit + settings.tolerance
         val over = detector.update(speedKmh, threshold)
 
         if (cameraHit != null && settings.cameraAlert) {
@@ -118,7 +122,8 @@ class SpeedService : Service(), LocationListener {
                 beeper.cameraAlert()
             }
         }
-        val alarming = over && (!settings.cameraOnlyAlarm || cameraHit != null)
+        val inZone = cameraHit != null || shield != null
+        val alarming = over && (!settings.cameraOnlyAlarm || inZone)
         beeper.setOverspeed(alarming)
 
         val status = when {
@@ -132,19 +137,21 @@ class SpeedService : Service(), LocationListener {
                 running = true,
                 hasFix = true,
                 speedKmh = speedKmh,
-                limit = resolved.limit,
-                limitSource = resolved.source,
+                limit = limit,
+                limitSource = source,
                 threshold = threshold,
                 overspeed = over,
                 alarming = alarming,
                 cameraOnly = settings.cameraOnlyAlarm,
                 roadName = roadMatch?.road?.name,
                 camera = cameraHit,
+                shield = shield,
                 status = status,
             )
         )
-        val text = "時速 ${speedKmh.toInt()}｜限速 ${resolved.limit}" +
-            (if (cameraHit != null) "｜📷 測速照相 ${cameraHit.distance.toInt()} m" else "") +
+        val text = "時速 ${speedKmh.toInt()}｜限速 $limit" +
+            (if (shield != null) "｜📷 神盾 ${shield.label} ${shield.distance?.let { "$it m" } ?: ""}"
+            else if (cameraHit != null) "｜📷 測速照相 ${cameraHit.distance.toInt()} m" else "") +
             (if (alarming) "｜超速！" else "")
         if (text != lastNotifText) {
             lastNotifText = text

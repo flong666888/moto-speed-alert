@@ -52,6 +52,16 @@ class Settings(context: Context) {
         get() = prefs.getString("probePackage", null)
         set(v) = prefs.edit().putString("probePackage", v).apply()
 
+    /** Treat 神盾's on-screen warnings as camera zones (needs the accessibility service). */
+    var shieldLink: Boolean
+        get() = prefs.getBoolean("shieldLink", true)
+        set(v) = prefs.edit().putBoolean("shieldLink", v).apply()
+
+    /** Keep the detailed probe log (for debugging the 神盾 link). */
+    var probeLogging: Boolean
+        get() = prefs.getBoolean("probeLogging", false)
+        set(v) = prefs.edit().putBoolean("probeLogging", v).apply()
+
     /** 0..100 */
     var volume: Int
         get() = prefs.getInt("volume", 100)

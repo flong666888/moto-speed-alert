@@ -18,6 +18,8 @@ data class RideState(
     val cameraOnly: Boolean = true,
     val roadName: String? = null,
     val camera: CameraHit? = null,
+    /** Warning currently shown by 神盾, if linked. */
+    val shield: ShieldAlert? = null,
     val status: String = "",
 )
 

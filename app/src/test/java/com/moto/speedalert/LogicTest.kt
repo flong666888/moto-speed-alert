@@ -164,4 +164,25 @@ class LogicTest {
         assertTrue("expected >1000 cameras, got ${db.cameras.size}", db.cameras.size > 1000)
         assertTrue(db.cameras.all { it.limit in 20..120 })
     }
+
+    // ---- 神盾 link ----------------------------------------------------------
+
+    @Test
+    fun parsesShieldWarnings() {
+        // As seen in the probe log: "科" + "163" "m"
+        assertEquals(ShieldAlert(null, "科技執法", 163), ShieldState.parse("科", "163", "m"))
+        assertEquals(ShieldAlert(50, "限速 50", 320), ShieldState.parse("50", "320", "m"))
+        assertEquals(ShieldAlert(60, "限速 60", 1200), ShieldState.parse("60", "1.2", "km"))
+        assertEquals(ShieldAlert(null, "科技執法", null), ShieldState.parse("科", null, null))
+        assertNull(ShieldState.parse(null, null, null))
+    }
+
+    @Test
+    fun shieldWarningExpiresWhenNotRefreshed() {
+        ShieldState.set(ShieldAlert(50, "限速 50", 100), now = 1_000)
+        assertNotNull(ShieldState.current(now = 3_000))
+        assertNull(ShieldState.current(now = 10_000))
+        ShieldState.set(null, now = 10_000)
+        assertNull(ShieldState.current(now = 10_001))
+    }
 }

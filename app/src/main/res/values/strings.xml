@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">機車超速提醒</string>
-    <string name="probe_name">機車超速提醒：偵測測試</string>
-    <string name="probe_description">測試用：只記錄你在 App 裡選定的那一個測速 App（例如神盾）的視窗內容，看它的警告能不能被讀到。其他 App 的內容不會被記錄，紀錄只存在本機。測試完可以關掉。</string>
+    <string name="probe_name">機車超速提醒：神盾連動</string>
+    <string name="probe_description">只讀取你在 App 裡選定的那一個測速 App（神盾）跳出的警告視窗（限速、距離），讓本 App 在神盾警告時進入照相路段。其他 App 的內容不會被讀取或記錄，資料只留在本機。</string>
 </resources>

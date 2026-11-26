@@ -58,7 +58,14 @@ class FloatingWindow(private val context: Context, private val settings: Setting
             }
         )
         val cam = s.camera
-        if (cam != null) {
+        val sh = s.shield
+        if (sh != null) {
+            background.setStroke(dp(4f).toInt(), COLOR_CAMERA)
+            cameraHeader.visibility = View.VISIBLE
+            cameraHeader.text = "📷 " + (if (sh.limit != null) "測速照相" else sh.label)
+            cameraText.visibility = if (sh.distance != null) View.VISIBLE else View.GONE
+            cameraText.text = "${sh.distance} m"
+        } else if (cam != null) {
             // Camera zone: thick yellow frame + "測速照相" header + distance.
             background.setStroke(dp(4f).toInt(), COLOR_CAMERA)
             cameraHeader.visibility = View.VISIBLE

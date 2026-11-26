@@ -30,11 +30,14 @@ class ProbeService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         val target = settings.probePackage ?: return
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+        val isWindows = event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        if (!isWindows && event.packageName?.toString() != target) return
+        if (settings.shieldLink) readShield(target)
+        if (!settings.probeLogging) return
+        if (isWindows) {
             logTargetWindows(target)
             return
         }
-        if (event.packageName?.toString() != target) return
 
         val sb = StringBuilder()
         sb.append("事件 ").append(AccessibilityEvent.eventTypeToString(event.eventType))
@@ -53,6 +56,33 @@ class ProbeService : AccessibilityService() {
         lastDump = key
         ProbeLog.append(this, dump)
         root?.let { compact("事件", it) }
+    }
+
+    /**
+     * Looks for 神盾's warning windows (limit/type + distance) and publishes what they say.
+     * No warning window = no warning.
+     */
+    private fun readShield(target: String) {
+        val list = try { windows } catch (_: Exception) { return }
+        var limitText: String? = null
+        var distText: String? = null
+        var unit: String? = null
+        var found = false
+        for (w in list) {
+            val root = w.root ?: continue
+            if (root.packageName?.toString() != target) continue
+            fun text(id: String) = root.findAccessibilityNodeInfosByViewId("$target:id/$id")
+                .firstOrNull()?.text?.toString()?.takeIf { it.isNotBlank() }
+            when (root.viewIdResourceName?.substringAfter(":id/")) {
+                "rlayView2Root" -> { found = true; limitText = text("txtView2SpeedLimitVal") ?: limitText }
+                "rlayView3Root" -> {
+                    found = true
+                    distText = text("txtView3DestVal") ?: distText
+                    unit = text("txtView3DestUnit") ?: unit
+                }
+            }
+        }
+        ShieldState.set(if (found) ShieldState.parse(limitText, distText, unit) else null)
     }
 
     /** Lists the target app's windows (overlays included, where Android reports them). */

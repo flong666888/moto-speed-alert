@@ -2,6 +2,7 @@ package com.moto.speedalert
 
 enum class LimitSource(val label: String) {
     CAMERA("測速照相點"),
+    SHIELD("神盾"),
     ROAD("道路資料"),
     HELD("沿用前段"),
     DEFAULT("預設值"),

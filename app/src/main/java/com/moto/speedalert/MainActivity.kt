@@ -188,7 +188,7 @@ class MainActivity : Activity() {
         if (s.running) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        val inCameraZone = s.running && s.camera != null
+        val inCameraZone = s.running && (s.camera != null || s.shield != null)
         if (!s.running || !s.hasFix) {
             speedView.text = "--"
             speedView.setTextColor(getColor(R.color.text))
@@ -222,24 +222,36 @@ class MainActivity : Activity() {
         } else ""
 
         val cam = s.camera
-        if (inCameraZone && cam != null) {
+        val sh = s.shield
+        if (inCameraZone && sh != null) {
+            cameraTitle.text = "📷 神盾：${sh.label}" + (sh.distance?.let { "  前方 $it m" } ?: "")
+            cameraDetail.text = when {
+                sh.limit != null -> "依神盾限速 ${sh.limit} 判斷超速"
+                cam != null -> "限速 ${cam.camera.limit}｜${cam.camera.address}"
+                else -> "超速判斷使用目前道路限速 ${s.limit}"
+            }
+            showBanner()
+        } else if (inCameraZone && cam != null) {
             val kind = if (cam.camera.section) "區間測速" else "測速照相"
             cameraTitle.text = "📷 $kind  前方 ${cam.distance.toInt()} m"
             cameraDetail.text = "限速 ${cam.camera.limit}｜${cam.camera.address}"
-            if (cameraBanner.visibility != View.VISIBLE) {
-                cameraBanner.visibility = View.VISIBLE
-                bannerPulse = android.animation.ObjectAnimator.ofFloat(cameraBanner, "alpha", 1f, 0.45f).apply {
-                    duration = 600
-                    repeatMode = android.animation.ValueAnimator.REVERSE
-                    repeatCount = android.animation.ValueAnimator.INFINITE
-                    start()
-                }
-            }
+            showBanner()
         } else if (cameraBanner.visibility == View.VISIBLE) {
             bannerPulse?.cancel()
             bannerPulse = null
             cameraBanner.alpha = 1f
             cameraBanner.visibility = View.GONE
+        }
+    }
+
+    private fun showBanner() {
+        if (cameraBanner.visibility == View.VISIBLE) return
+        cameraBanner.visibility = View.VISIBLE
+        bannerPulse = android.animation.ObjectAnimator.ofFloat(cameraBanner, "alpha", 1f, 0.45f).apply {
+            duration = 600
+            repeatMode = android.animation.ValueAnimator.REVERSE
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            start()
         }
     }
 
@@ -378,7 +390,7 @@ class MainActivity : Activity() {
 
     private fun buildProbeSection(root: LinearLayout) {
         root.addView(TextView(this).apply {
-            text = "偵測神盾（測試）"
+            text = "神盾連動"
             textSize = 18f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
             setTextColor(getColor(R.color.text))
@@ -402,8 +414,18 @@ class MainActivity : Activity() {
             }
             root.addView(r)
         }
-        row("1. 選擇神盾" to { pickProbeApp() }, "2. 開啟偵測權限" to { openAccessibilitySettings() })
-        row("3. 查看偵測紀錄" to { showProbeLog() })
+        row("1. 選擇神盾" to { pickProbeApp() }, "2. 開啟連動權限" to { openAccessibilitySettings() })
+        fun sw(label: String, value: Boolean, onChange: (Boolean) -> Unit) = root.addView(Switch(this).apply {
+            text = label
+            textSize = 16f
+            setTextColor(getColor(R.color.text))
+            isChecked = value
+            setPadding(0, dp(8), 0, dp(8))
+            setOnCheckedChangeListener { _, c -> onChange(c) }
+        })
+        sw("神盾警告時視為測速照相路段", settings.shieldLink) { settings.shieldLink = it }
+        sw("記錄偵測紀錄（除錯用）", settings.probeLogging) { settings.probeLogging = it }
+        row("查看偵測紀錄" to { showProbeLog() })
     }
 
     private fun renderProbeStatus() {
@@ -412,7 +434,7 @@ class MainActivity : Activity() {
         val label = pkg?.let { appLabel(it) ?: it } ?: "尚未選擇"
         val on = isProbeEnabled()
         v.text = "目標 App：$label\n偵測權限：" + (if (on) "已開啟 ✓" else "未開啟") +
-            "\n用法：選好神盾、開啟權限，同時開著神盾和本 App 騎車；遇到神盾警告後回來按「查看偵測紀錄」→「複製」貼給 Claude。"
+            "\n開啟後，神盾跳出測速照相／科技執法警告時，本 App 也會進入照相路段（黃框），神盾有顯示限速就用它的限速判斷超速。"
     }
 
     private fun isProbeEnabled(): Boolean {
@@ -448,9 +470,9 @@ class MainActivity : Activity() {
 
     private fun openAccessibilitySettings() {
         android.app.AlertDialog.Builder(this)
-            .setTitle("開啟偵測權限")
+            .setTitle("開啟神盾連動權限")
             .setMessage(
-                "在「無障礙」設定裡找到「機車超速提醒：偵測測試」並開啟。\n\n" +
+                "在「無障礙」設定裡找到「機車超速提醒：神盾連動」並開啟。\n\n" +
                     "如果是灰色、顯示「受限制的設定」：先到 設定 → 應用程式 → 機車超速提醒 → 右上角「⋮」→「允許受限制的設定」，再回來開啟。\n\n" +
                     "這個權限只用來記錄你選的那一個 App，測試完可以關掉。"
             )
