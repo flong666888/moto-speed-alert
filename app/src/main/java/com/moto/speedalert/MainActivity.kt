@@ -228,6 +228,7 @@ class MainActivity : Activity() {
             cameraDetail.text = when {
                 sh.limit != null -> "依神盾限速 ${sh.limit} 判斷超速"
                 cam != null -> "限速 ${cam.camera.limit}｜${cam.camera.address}"
+                !sh.speedEnforced -> "非測速照相，只提醒、超速不會嗶嗶"
                 else -> "超速判斷使用目前道路限速 ${s.limit}"
             }
             showBanner()

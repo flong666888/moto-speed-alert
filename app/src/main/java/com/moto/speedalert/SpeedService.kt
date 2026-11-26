@@ -122,7 +122,8 @@ class SpeedService : Service(), LocationListener {
                 beeper.cameraAlert()
             }
         }
-        val inZone = cameraHit != null || shield != null
+        // Only speed enforcement counts; 神盾's 科技執法 etc. are display-only.
+        val inZone = cameraHit != null || shield?.speedEnforced == true
         val alarming = over && (!settings.cameraOnlyAlarm || inZone)
         beeper.setOverspeed(alarming)
 

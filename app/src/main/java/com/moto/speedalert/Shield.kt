@@ -14,7 +14,13 @@ data class ShieldAlert(
     val label: String,
     /** Metres to the point, if shown. */
     val distance: Int?,
-)
+) {
+    /**
+     * True for speed enforcement (a posted limit, or a 測速 type). Other kinds such as
+     * 科技執法 (red light, turning…) are shown but never trigger the overspeed beep.
+     */
+    val speedEnforced: Boolean get() = limit != null || "測速" in label
+}
 
 object ShieldState {
     /** A warning not refreshed for this long is considered over. */

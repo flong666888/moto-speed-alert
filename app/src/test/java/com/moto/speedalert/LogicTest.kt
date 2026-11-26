@@ -178,6 +178,14 @@ class LogicTest {
     }
 
     @Test
+    fun onlySpeedEnforcementBeeps() {
+        assertFalse(ShieldState.parse("科", "163", "m")!!.speedEnforced) // 科技執法: show only
+        assertFalse(ShieldState.parse("闖", "80", "m")!!.speedEnforced)
+        assertTrue(ShieldState.parse("50", "320", "m")!!.speedEnforced)
+        assertTrue(ShieldState.parse("區", "500", "m")!!.speedEnforced) // 區間測速
+    }
+
+    @Test
     fun shieldWarningExpiresWhenNotRefreshed() {
         ShieldState.set(ShieldAlert(50, "限速 50", 100), now = 1_000)
         assertNotNull(ShieldState.current(now = 3_000))
