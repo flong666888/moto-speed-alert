@@ -44,7 +44,7 @@ class ProbeService : AccessibilityService() {
         sb.append("｜").append(ourContext())
         val root = event.source?.let { src -> src.window?.root ?: src }
         if (root != null) {
-            sb.append("\n").append(dumpTree(root))
+            sb.append("\n").append(summary(root)).append(dumpTree(root))
         }
         val dump = sb.toString()
         // Content-changed events repeat a lot; store only when something actually changed.
@@ -65,7 +65,7 @@ class ProbeService : AccessibilityService() {
             sb.append("視窗 type=").append(windowType(w.type))
                 .append(" title=").append(w.title)
                 .append(" bounds=").append(r.toShortString())
-                .append("\n").append(dumpTree(root))
+                .append("\n").append(summary(root)).append(dumpTree(root))
         }
         val text = sb.toString()
         if (text == lastWindows) return
@@ -85,11 +85,33 @@ class ProbeService : AccessibilityService() {
             n.text?.let { if (it.isNotBlank()) sb.append(" text=\"").append(it).append('"') }
             n.contentDescription?.let { if (it.isNotBlank()) sb.append(" desc=\"").append(it).append('"') }
             sb.append(" ").append(r.toShortString()).append('\n')
+            // Ads are web views with many nodes and nothing useful.
+            if (n.className?.contains("WebView") == true) return
             for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
         }
         walk(root, 0)
         if (count >= MAX_NODES) sb.append("  …（節點太多，已截斷）\n")
         return sb.toString()
+    }
+
+    /**
+     * One line with the fields that look camera/speed related and currently hold a value,
+     * e.g. "重點 labLockCamDistance=320 labSpeed=48". Easy to read even if the tree is cut.
+     */
+    private fun summary(root: AccessibilityNodeInfo): String {
+        val hits = mutableListOf<String>()
+        var visited = 0
+        fun walk(n: AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || visited > 600 || depth > 30) return
+            visited++
+            val id = n.viewIdResourceName?.substringAfter(":id/")
+            val value = n.text?.takeIf { it.isNotBlank() } ?: n.contentDescription?.takeIf { it.isNotBlank() && it != "na" }
+            if (id != null && value != null && INTERESTING.containsMatchIn(id)) hits += "$id=$value"
+            if (n.className?.contains("WebView") == true) return
+            for (i in 0 until n.childCount) walk(n.getChild(i), depth + 1)
+        }
+        walk(root, 0)
+        return if (hits.isEmpty()) "" else "重點 " + hits.joinToString(" ") + "\n"
     }
 
     /** What our own app knew at that moment, to line the two apps' warnings up. */
@@ -111,7 +133,8 @@ class ProbeService : AccessibilityService() {
     override fun onInterrupt() {}
 
     companion object {
-        private const val MAX_NODES = 80
+        private const val MAX_NODES = 220
+        private val INTERESTING = Regex("cam|limit|speed|warn|dist|alert|ring|report|status|info|lock|float|sign", RegexOption.IGNORE_CASE)
     }
 }
 
