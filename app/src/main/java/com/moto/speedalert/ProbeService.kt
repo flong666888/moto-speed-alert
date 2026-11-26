@@ -32,6 +32,10 @@ class ProbeService : AccessibilityService() {
         val target = settings.probePackage ?: return
         val isWindows = event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
         if (!isWindows && event.packageName?.toString() != target) return
+        if (event.eventType == AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) {
+            if (settings.probeLogging) logNotification(event)
+            return
+        }
         if (settings.shieldLink) readShield(target)
         if (!settings.probeLogging) return
         if (isWindows) {
@@ -83,6 +87,30 @@ class ProbeService : AccessibilityService() {
             }
         }
         ShieldState.set(if (found) ShieldState.parse(limitText, distText, unit) else null)
+    }
+
+    /** Records a notification (or toast) posted by the target app, with all its texts. */
+    private fun logNotification(event: AccessibilityEvent) {
+        val n = event.parcelableData as? android.app.Notification
+        val parts = mutableListOf<String>()
+        if (event.text.isNotEmpty()) parts += "text=" + event.text.joinToString(" / ")
+        if (n != null) {
+            val ex = n.extras
+            for (key in listOf(
+                android.app.Notification.EXTRA_TITLE, android.app.Notification.EXTRA_TEXT,
+                android.app.Notification.EXTRA_BIG_TEXT, android.app.Notification.EXTRA_SUB_TEXT,
+                android.app.Notification.EXTRA_INFO_TEXT, android.app.Notification.EXTRA_SUMMARY_TEXT,
+            )) {
+                ex.getCharSequence(key)?.takeIf { it.isNotBlank() }?.let { parts += key.removePrefix("android.") + "=" + it }
+            }
+            n.tickerText?.let { parts += "ticker=$it" }
+            parts += "channel=${n.channelId} ongoing=${n.flags and android.app.Notification.FLAG_ONGOING_EVENT != 0}"
+        } else {
+            parts += "（不是通知，可能是 Toast 提示）"
+        }
+        val line = "通知｜" + parts.joinToString(" ")
+        ProbeLog.append(this, line + "｜" + ourContext())
+        ProbeLog.appendCompact(this, line + "｜" + ourContext())
     }
 
     /** Lists the target app's windows (overlays included, where Android reports them). */
